@@ -112,12 +112,12 @@ export function ExpenseForm() {
 
           <div className="space-y-2">
             <Label htmlFor="amount">Amount (cents)</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground">{currencySymbol}</span>
+            <div className="flex items-center rounded-xl border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-all">
+              <span className="pl-3 text-muted-foreground select-none">{currencySymbol}</span>
               <Input 
                 id="amount" 
                 type="number" 
-                className="pl-9 rounded-xl"
+                className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent h-10 px-2"
                 placeholder="0.00"
                 {...form.register("amount")}
               />
