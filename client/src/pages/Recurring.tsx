@@ -7,10 +7,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertRecurringExpenseSchema } from "@shared/schema";
+import { insertRecurringExpenseSchema, getCurrencyMetadata, CURRENCIES } from "@shared/schema";
 import { z } from "zod";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@shared/routes";
+import { formatAmount } from "@/lib/utils";
 import { Plus, CalendarClock, Trash2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 const formSchema = insertRecurringExpenseSchema.extend({
   amount: z.coerce.number().min(1),
   nextDueDate: z.coerce.date(),
+  currency: z.string().default("USD"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -29,19 +33,33 @@ export default function Recurring() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   
+  const { data: settings } = useQuery<any>({
+    queryKey: [api.settings.get.path],
+  });
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       nextDueDate: new Date(),
       active: true,
-      frequency: "monthly"
+      frequency: "monthly",
+      currency: settings?.baseCurrency || "USD",
     }
   });
 
+  useEffect(() => {
+    if (settings?.baseCurrency) {
+      form.setValue("currency", settings.baseCurrency);
+    }
+  }, [settings, open, form]);
+
   const onSubmit = (data: FormData) => {
+    const metadata = getCurrencyMetadata(data.currency);
+    const scale = Math.pow(10, metadata.decimals);
+
     const submissionData = {
       ...data,
-      amount: Math.round(data.amount * 100),
+      amount: Math.round(data.amount * scale),
     };
     createMutation.mutate(submissionData, {
       onSuccess: () => {
@@ -81,8 +99,37 @@ export default function Recurring() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Amount</Label>
-                    <Input {...form.register("amount")} type="number" step="0.01" className="rounded-xl" />
+                    <div className="flex items-center rounded-xl border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-all h-10">
+                      <span className="pl-3 text-muted-foreground select-none">
+                        {getCurrencyMetadata(form.watch("currency") || "USD").symbol}
+                      </span>
+                      <Input 
+                        {...form.register("amount")} 
+                        type="number" 
+                        step={getCurrencyMetadata(form.watch("currency") || "USD").decimals === 0 ? "1" : "0.01"} 
+                        className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent px-2" 
+                      />
+                    </div>
                   </div>
+                  <div className="space-y-2">
+                    <Label>Currency</Label>
+                    <Select 
+                      value={form.watch("currency")}
+                      onValueChange={(val) => form.setValue("currency", val)}
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CURRENCIES.map(c => (
+                          <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Frequency</Label>
                     <Select onValueChange={(val) => form.setValue("frequency", val)} defaultValue="monthly">
@@ -137,7 +184,9 @@ export default function Recurring() {
               </div>
               
               <h3 className="font-bold text-lg">{item.description}</h3>
-              <p className="text-3xl font-display font-bold mt-2">${(item.amount / 100).toFixed(2)}</p>
+              <p className="text-3xl font-display font-bold mt-2">
+                {formatAmount(item.amount, item.currency)}
+              </p>
               
               <div className="mt-4 pt-4 border-t border-border/50 flex justify-between text-sm text-muted-foreground">
                 <span className="capitalize">{item.frequency}</span>

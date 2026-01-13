@@ -1,7 +1,8 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { type Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
+import { getCurrencyMetadata } from "@shared/schema";
 import { z } from "zod";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import multer from "multer";
@@ -82,13 +83,19 @@ export async function registerRoutes(
       
       const sessionSettings = await storage.getSettings();
       const baseCurrency = sessionSettings.baseCurrency;
+      const baseMeta = getCurrencyMetadata(baseCurrency);
+      const inputMeta = getCurrencyMetadata(input.currency);
       
+      const inputScale = Math.pow(10, inputMeta.decimals);
+      const baseScale = Math.pow(10, baseMeta.decimals);
+
       let convertedAmount = input.amount;
       let rate = "1.0";
       
       if (input.currency !== baseCurrency) {
         const numericRate = await getExchangeRate(input.currency, baseCurrency);
-        convertedAmount = Math.round(input.amount * numericRate);
+        // convertedAmount (base units) = (original units / inputScale) * rate * baseScale
+        convertedAmount = Math.round((input.amount / inputScale) * numericRate * baseScale);
         rate = numericRate.toString();
       }
 
@@ -132,13 +139,18 @@ export async function registerRoutes(
         
         const sessionSettings = await storage.getSettings();
         const baseCurrency = sessionSettings.baseCurrency;
+        const baseMeta = getCurrencyMetadata(baseCurrency);
+        const inputMeta = getCurrencyMetadata(currency);
         
+        const inputScale = Math.pow(10, inputMeta.decimals);
+        const baseScale = Math.pow(10, baseMeta.decimals);
+
         let convertedAmount = amount;
         let rate = "1.0";
         
         if (currency !== baseCurrency) {
           const numericRate = await getExchangeRate(currency, baseCurrency);
-          convertedAmount = Math.round(amount * numericRate);
+          convertedAmount = Math.round((amount / inputScale) * numericRate * baseScale);
           rate = numericRate.toString();
         }
 

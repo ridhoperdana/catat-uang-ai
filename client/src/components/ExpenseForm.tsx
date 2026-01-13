@@ -8,20 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@shared/routes";
+import { getCurrencyMetadata, CURRENCIES } from "@shared/schema";
 import { z } from "zod";
 
-const CURRENCIES = [
-  { code: "USD", symbol: "$" },
-  { code: "EUR", symbol: "€" },
-  { code: "GBP", symbol: "£" },
-  { code: "JPY", symbol: "¥" },
-  { code: "IDR", symbol: "Rp" },
-  { code: "AUD", symbol: "A$" },
-  { code: "CAD", symbol: "C$" },
-  { code: "SGD", symbol: "S$" },
-];
+// CURRENCIES is now imported from @shared/schema
 
 const formSchema = insertExpenseSchema.extend({
   amount: z.coerce.number().min(1, "Amount must be greater than 0"),
@@ -36,6 +30,10 @@ export function ExpenseForm() {
   const { toast } = useToast();
   const createExpense = useCreateExpense();
   
+  const { data: settings } = useQuery<any>({
+    queryKey: [api.settings.get.path],
+  });
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -46,10 +44,20 @@ export function ExpenseForm() {
     }
   });
 
+  // Default currency to settings baseCurrency
+  useEffect(() => {
+    if (settings?.baseCurrency) {
+      form.setValue("currency", settings.baseCurrency);
+    }
+  }, [settings, open, form]);
+
   const onSubmit = (data: FormData) => {
+    const metadata = getCurrencyMetadata(data.currency);
+    const scale = Math.pow(10, metadata.decimals);
+
     const submissionData = {
       ...data,
-      amount: Math.round(data.amount * 100),
+      amount: Math.round(data.amount * scale),
     };
     createExpense.mutate(submissionData as InsertExpense, {
       onSuccess: () => {
@@ -64,7 +72,8 @@ export function ExpenseForm() {
   };
 
   const selectedCurrency = form.watch("currency");
-  const currencySymbol = CURRENCIES.find(c => c.code === selectedCurrency)?.symbol || "$";
+  const currencyMeta = getCurrencyMetadata(selectedCurrency);
+  const currencySymbol = currencyMeta.symbol;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -99,11 +108,11 @@ export function ExpenseForm() {
             <div className="space-y-2">
               <Label htmlFor="currency">Currency</Label>
               <Select 
-                defaultValue="USD" 
+                value={selectedCurrency}
                 onValueChange={(val) => form.setValue("currency", val)}
               >
                 <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="USD" />
+                  <SelectValue placeholder={settings?.baseCurrency || "USD"} />
                 </SelectTrigger>
                 <SelectContent>
                   {CURRENCIES.map(c => (
@@ -121,9 +130,9 @@ export function ExpenseForm() {
               <Input 
                 id="amount" 
                 type="number" 
-                step="0.01"
+                step={currencyMeta.decimals === 0 ? "1" : "0.01"}
                 className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent h-10 px-2"
-                placeholder="0.00"
+                placeholder={currencyMeta.decimals === 0 ? "0" : "0.00"}
                 {...form.register("amount")}
               />
             </div>
