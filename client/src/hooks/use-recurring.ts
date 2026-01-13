@@ -1,13 +1,39 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type InsertRecurringExpense } from "@shared/routes";
+import { apiRequest } from "@/lib/queryClient";
+import { getSyncQueue, type QueuedMutation } from "@/lib/sync-manager";
 
 export function useRecurringExpenses() {
+  const queryClient = useQueryClient();
+  const queryKey = [api.recurring.list.path];
+
   return useQuery({
-    queryKey: [api.recurring.list.path],
+    queryKey,
     queryFn: async () => {
-      const res = await fetch(api.recurring.list.path, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch recurring expenses");
-      return api.recurring.list.responses[200].parse(await res.json());
+      let serverRecurring: any[] = [];
+      try {
+        const res = await apiRequest("GET", api.recurring.list.path);
+        serverRecurring = api.recurring.list.responses[200].parse(await res.json());
+      } catch (error) {
+        console.warn("[useRecurringExpenses] Fetch failed, using cache if available:", error);
+        const cached = queryClient.getQueryData(queryKey);
+        if (Array.isArray(cached)) {
+          serverRecurring = cached;
+        }
+      }
+
+      const queue = await getSyncQueue();
+      const pendingRecurring = queue
+        .filter(item => item.method === 'POST' && item.url === api.recurring.create.path)
+        .map(item => ({
+          ...item.data,
+          id: item.id,
+          isPending: true,
+          nextDueDate: new Date(item.data.nextDueDate).toISOString(),
+          active: true,
+        }));
+
+      return [...pendingRecurring, ...serverRecurring.filter(s => !pendingRecurring.some(p => p.id === s.id))];
     },
   });
 }
@@ -22,20 +48,32 @@ export function useCreateRecurringExpense() {
         nextDueDate: new Date(data.nextDueDate).toISOString(),
       };
 
-      const res = await fetch(api.recurring.create.path, {
-        method: api.recurring.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      });
-      
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to create recurring expense");
-      }
+      const res = await apiRequest(api.recurring.create.method, api.recurring.create.path, payload);
       return api.recurring.create.responses[201].parse(await res.json());
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.recurring.list.path] }),
+    onMutate: async (newRecurring) => {
+      await queryClient.cancelQueries({ queryKey: [api.recurring.list.path] });
+      const previousRecurring = queryClient.getQueryData([api.recurring.list.path]);
+      
+      queryClient.setQueryData([api.recurring.list.path], (old: any[] = []) => [
+        {
+          ...newRecurring,
+          id: Math.floor(Math.random() * -1000000),
+          nextDueDate: new Date(newRecurring.nextDueDate).toISOString(),
+          active: true,
+          isOffline: true,
+        },
+        ...old,
+      ]);
+
+      return { previousRecurring };
+    },
+    onError: (err, newRecurring, context) => {
+      queryClient.setQueryData([api.recurring.list.path], context?.previousRecurring);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [api.recurring.list.path] });
+    },
   });
 }
 
@@ -44,8 +82,7 @@ export function useDeleteRecurringExpense() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.recurring.delete.path, { id });
-      const res = await fetch(url, { method: api.recurring.delete.method, credentials: "include" });
-      if (!res.ok) throw new Error("Failed to delete recurring expense");
+      await apiRequest(api.recurring.delete.method, url);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.recurring.list.path] }),
   });

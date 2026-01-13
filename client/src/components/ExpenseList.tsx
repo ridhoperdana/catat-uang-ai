@@ -88,11 +88,14 @@ export function ExpenseList({ limit }: { limit?: number }) {
               <div className="flex flex-col items-end">
                 <span className={clsx(
                   "font-bold font-mono",
-                  isIncome ? "text-green-600 dark:text-green-400" : "text-foreground"
+                  isIncome ? "text-green-600 dark:text-green-400" : "text-foreground",
+                  expense.isPending && "opacity-50"
                 )}>
                   {isIncome ? "+" : "-"}{formatAmount(expense.amount, baseCurrency)}
                 </span>
-                {hasExchangeRate && (
+                {expense.isPending ? (
+                  <span className="text-[10px] text-primary animate-pulse font-medium">Syncing...</span>
+                ) : hasExchangeRate ? (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -106,12 +109,15 @@ export function ExpenseList({ limit }: { limit?: number }) {
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                )}
+                ) : null}
               </div>
               
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                <DropdownMenuTrigger asChild disabled={expense.isPending}>
+                  <Button variant="ghost" size="icon" className={clsx(
+                    "h-8 w-8 rounded-full transition-opacity",
+                    expense.isPending ? "opacity-30" : "opacity-0 group-hover:opacity-100"
+                  )}>
                     <MoreVertical className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { insertExpenseSchema, insertRecurringExpenseSchema, insertInvoiceSchema, expenses, recurringExpenses, invoices, settings, insertSettingSchema } from './schema';
+export * from './schema';
 
 export const errorSchemas = {
   validation: z.object({
