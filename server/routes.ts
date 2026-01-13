@@ -40,7 +40,11 @@ export async function registerRoutes(
 
   app.post(api.expenses.create.path, async (req, res) => {
     try {
-      const input = api.expenses.create.input.parse(req.body);
+      const bodySchema = api.expenses.create.input.extend({
+        date: z.coerce.date(),
+        amount: z.coerce.number(),
+      });
+      const input = bodySchema.parse(req.body);
       const expense = await storage.createExpense(input);
       res.status(201).json(expense);
     } catch (err) {
@@ -57,7 +61,11 @@ export async function registerRoutes(
   app.put(api.expenses.update.path, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const input = api.expenses.update.input.parse(req.body);
+      const bodySchema = api.expenses.update.input.extend({
+        date: z.coerce.date().optional(),
+        amount: z.coerce.number().optional(),
+      });
+      const input = bodySchema.parse(req.body);
       const updated = await storage.updateExpense(id, input);
       if (!updated) return res.status(404).json({ message: "Expense not found" });
       res.json(updated);
