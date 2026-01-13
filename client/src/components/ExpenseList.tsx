@@ -2,7 +2,7 @@ import { useExpenses, useDeleteExpense } from "@/hooks/use-expenses";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Trash2, TrendingUp, TrendingDown, MoreVertical } from "lucide-react";
+import { Trash2, TrendingUp, TrendingDown, MoreVertical, Globe } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,12 +11,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clsx } from "clsx";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@shared/routes";
+import { formatAmount } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function ExpenseList({ limit }: { limit?: number }) {
-  const { data: expenses, isLoading } = useExpenses();
+  const { data: expenses, isLoading: expensesLoading } = useExpenses();
   const deleteExpense = useDeleteExpense();
+  const { data: settings, isLoading: settingsLoading } = useQuery<any>({
+    queryKey: [api.settings.get.path],
+  });
 
-  if (isLoading) {
+  if (expensesLoading || settingsLoading) {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
@@ -26,6 +33,7 @@ export function ExpenseList({ limit }: { limit?: number }) {
     );
   }
 
+  const baseCurrency = settings?.baseCurrency || "USD";
   const displayExpenses = limit ? expenses?.slice(0, limit) : expenses;
 
   if (!displayExpenses?.length) {
@@ -46,6 +54,7 @@ export function ExpenseList({ limit }: { limit?: number }) {
     <div className="space-y-3">
       {displayExpenses.map((expense) => {
         const isIncome = expense.type === "income";
+        const hasExchangeRate = expense.currency && expense.currency !== baseCurrency;
         
         return (
           <div 
@@ -76,12 +85,29 @@ export function ExpenseList({ limit }: { limit?: number }) {
             </div>
 
             <div className="flex items-center gap-4">
-              <span className={clsx(
-                "font-bold font-mono",
-                isIncome ? "text-green-600 dark:text-green-400" : "text-foreground"
-              )}>
-                {isIncome ? "+" : "-"}${Math.abs(expense.amount / 100).toFixed(2)}
-              </span>
+              <div className="flex flex-col items-end">
+                <span className={clsx(
+                  "font-bold font-mono",
+                  isIncome ? "text-green-600 dark:text-green-400" : "text-foreground"
+                )}>
+                  {isIncome ? "+" : "-"}{formatAmount(expense.amount, baseCurrency)}
+                </span>
+                {hasExchangeRate && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-1 cursor-help">
+                          <Globe className="w-3 h-3" />
+                          Org: {formatAmount(expense.originalAmount || expense.amount, expense.currency)}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs">Converted from {expense.currency} at rate {expense.exchangeRate}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
               
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

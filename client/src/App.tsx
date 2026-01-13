@@ -8,6 +8,7 @@ import Home from "@/pages/Home";
 import Expenses from "@/pages/Expenses";
 import Recurring from "@/pages/Recurring";
 import Invoices from "@/pages/Invoices";
+import SettingsPage from "@/pages/Settings";
 
 function Router() {
   return (
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/expenses" component={Expenses} />
       <Route path="/recurring" component={Recurring} />
       <Route path="/invoices" component={Invoices} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );

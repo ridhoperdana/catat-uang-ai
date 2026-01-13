@@ -8,6 +8,7 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import OpenAI from "openai";
+import axios from "axios";
 
 // Configure upload storage
 const upload = multer({ 
@@ -20,12 +21,44 @@ if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
+async function getExchangeRate(from: string, to: string): Promise<number> {
+  if (from === to) return 1;
+  try {
+    const response = await axios.get(`https://open.er-api.com/v6/latest/${from}`);
+    const rate = response.data.rates[to];
+    if (!rate) throw new Error(`Rate not found for ${to}`);
+    return rate;
+  } catch (error) {
+    console.error("Exchange rate error:", error);
+    throw new Error("Failed to fetch exchange rate");
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   // Register Chat Routes (Integration)
   registerChatRoutes(app);
+
+  // --- Settings ---
+  app.get(api.settings.get.path, async (req, res) => {
+    const settings = await storage.getSettings();
+    res.json(settings);
+  });
+
+  app.patch(api.settings.update.path, async (req, res) => {
+    try {
+      const input = api.settings.update.input!.parse(req.body);
+      const updated = await storage.updateSettings(input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
 
   // --- Expenses ---
   app.get(api.expenses.list.path, async (req, res) => {
@@ -42,10 +75,29 @@ export async function registerRoutes(
     try {
       const bodySchema = api.expenses.create.input.extend({
         date: z.coerce.date(),
-        amount: z.coerce.number(),
+        amount: z.coerce.number(), // This is the amount in the selected currency
+        currency: z.string().default("USD"),
       });
       const input = bodySchema.parse(req.body);
-      const expense = await storage.createExpense(input);
+      
+      const sessionSettings = await storage.getSettings();
+      const baseCurrency = sessionSettings.baseCurrency;
+      
+      let convertedAmount = input.amount;
+      let rate = "1.0";
+      
+      if (input.currency !== baseCurrency) {
+        const numericRate = await getExchangeRate(input.currency, baseCurrency);
+        convertedAmount = Math.round(input.amount * numericRate);
+        rate = numericRate.toString();
+      }
+
+      const expense = await storage.createExpense({
+        ...input,
+        amount: convertedAmount,
+        originalAmount: input.amount,
+        exchangeRate: rate,
+      });
       res.status(201).json(expense);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -61,13 +113,45 @@ export async function registerRoutes(
   app.put(api.expenses.update.path, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const existing = await storage.getExpense(id);
+      if (!existing) return res.status(404).json({ message: "Expense not found" });
+
       const bodySchema = api.expenses.update.input.extend({
         date: z.coerce.date().optional(),
         amount: z.coerce.number().optional(),
+        currency: z.string().optional(),
       });
       const input = bodySchema.parse(req.body);
-      const updated = await storage.updateExpense(id, input);
-      if (!updated) return res.status(404).json({ message: "Expense not found" });
+      
+      let updateData = { ...input };
+
+      // If amount or currency changed, we might need to re-convert
+      if (input.amount !== undefined || input.currency !== undefined) {
+        const currency = input.currency || existing.currency || "USD";
+        const amount = input.amount !== undefined ? input.amount : (existing.originalAmount || existing.amount);
+        
+        const sessionSettings = await storage.getSettings();
+        const baseCurrency = sessionSettings.baseCurrency;
+        
+        let convertedAmount = amount;
+        let rate = "1.0";
+        
+        if (currency !== baseCurrency) {
+          const numericRate = await getExchangeRate(currency, baseCurrency);
+          convertedAmount = Math.round(amount * numericRate);
+          rate = numericRate.toString();
+        }
+
+        updateData = {
+          ...updateData,
+          amount: convertedAmount,
+          originalAmount: amount,
+          currency: currency,
+          exchangeRate: rate,
+        };
+      }
+
+      const updated = await storage.updateExpense(id, updateData);
       res.json(updated);
     } catch (err) {
        if (err instanceof z.ZodError) {

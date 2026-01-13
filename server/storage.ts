@@ -1,4 +1,4 @@
-import { expenses, recurringExpenses, invoices, type Expense, type InsertExpense, type RecurringExpense, type InsertRecurringExpense, type Invoice, type InsertInvoice, conversations, messages } from "@shared/schema";
+import { expenses, recurringExpenses, invoices, type Expense, type InsertExpense, type RecurringExpense, type InsertRecurringExpense, type Invoice, type InsertInvoice, conversations, messages, settings, type Setting, type InsertSetting } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 import { IChatStorage } from "./replit_integrations/chat/storage";
@@ -6,6 +6,7 @@ import { IChatStorage } from "./replit_integrations/chat/storage";
 export interface IStorage extends IChatStorage {
   // Expenses
   getExpenses(startDate?: string, endDate?: string, category?: string): Promise<Expense[]>;
+  getExpense(id: number): Promise<Expense | undefined>;
   createExpense(expense: InsertExpense): Promise<Expense>;
   updateExpense(id: number, expense: Partial<InsertExpense>): Promise<Expense | undefined>;
   deleteExpense(id: number): Promise<void>;
@@ -21,9 +22,32 @@ export interface IStorage extends IChatStorage {
   getInvoices(): Promise<Invoice[]>;
   updateInvoice(id: number, updates: Partial<Invoice>): Promise<Invoice | undefined>;
   getInvoice(id: number): Promise<Invoice | undefined>;
+
+  // Settings
+  getSettings(): Promise<Setting>;
+  updateSettings(updates: Partial<InsertSetting>): Promise<Setting>;
 }
 
 export class DatabaseStorage implements IStorage {
+  // Settings Implementation
+  async getSettings(): Promise<Setting> {
+    const [existing] = await db.select().from(settings);
+    if (!existing) {
+      const [created] = await db.insert(settings).values({ baseCurrency: "USD" }).returning();
+      return created;
+    }
+    return existing;
+  }
+
+  async updateSettings(updates: Partial<InsertSetting>): Promise<Setting> {
+    const existing = await this.getSettings();
+    const [updated] = await db.update(settings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(settings.id, existing.id))
+      .returning();
+    return updated;
+  }
+
   // Chat Implementation (required by interface but implemented in replit_integrations)
   async getConversation(id: number) {
     const [conversation] = await db.select().from(conversations).where(eq(conversations.id, id));
@@ -59,6 +83,11 @@ export class DatabaseStorage implements IStorage {
       .from(expenses)
       .where(and(...conditions))
       .orderBy(desc(expenses.date));
+  }
+
+  async getExpense(id: number): Promise<Expense | undefined> {
+    const [result] = await db.select().from(expenses).where(eq(expenses.id, id));
+    return result;
   }
 
   async createExpense(insertExpense: InsertExpense): Promise<Expense> {

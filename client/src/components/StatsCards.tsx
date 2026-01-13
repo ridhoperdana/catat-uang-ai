@@ -2,6 +2,9 @@ import { useExpenseStats } from "@/hooks/use-expenses";
 import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clsx } from "clsx";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@shared/routes";
+import { formatAmount } from "@/lib/utils";
 
 function StatCard({ 
   title, 
@@ -41,9 +44,12 @@ function StatCard({
 }
 
 export function StatsCards() {
-  const { data: stats, isLoading } = useExpenseStats();
+  const { data: stats, isLoading: statsLoading } = useExpenseStats();
+  const { data: settings, isLoading: settingsLoading } = useQuery<any>({
+    queryKey: [api.settings.get.path],
+  });
 
-  if (isLoading) {
+  if (statsLoading || settingsLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[1, 2, 3, 4].map((i) => (
@@ -53,32 +59,32 @@ export function StatsCards() {
     );
   }
 
-  const formatCurrency = (val: number) => 
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val / 100);
+  const baseCurrency = settings?.baseCurrency || "USD";
+  const format = (val: number) => formatAmount(val, baseCurrency);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
       <StatCard 
         title="Total Balance" 
-        value={formatCurrency(stats?.balance || 0)} 
+        value={format(stats?.balance || 0)} 
         icon={Wallet}
         className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20"
       />
       <StatCard 
         title="Income" 
-        value={formatCurrency(stats?.totalIncome || 0)} 
+        value={format(stats?.totalIncome || 0)} 
         icon={ArrowUpRight}
         className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20 [&_svg]:text-green-600"
       />
       <StatCard 
         title="Expenses" 
-        value={formatCurrency(stats?.totalExpense || 0)} 
+        value={format(stats?.totalExpense || 0)} 
         icon={ArrowDownRight}
         className="bg-gradient-to-br from-red-500/10 to-red-500/5 border-red-500/20 [&_svg]:text-red-600"
       />
       <StatCard 
         title="Monthly Flow" 
-        value={formatCurrency(stats?.monthlyIncome || 0)} 
+        value={format(stats?.monthlyIncome || 0)} 
         icon={TrendingUp}
         trend="Income this month"
       />

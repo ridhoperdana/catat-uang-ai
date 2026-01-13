@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Receipt, Repeat, FileText } from "lucide-react";
+import { LayoutDashboard, Receipt, Repeat, FileText, Settings } from "lucide-react";
 import { clsx } from "clsx";
 
 const navItems = [
@@ -7,6 +7,7 @@ const navItems = [
   { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/recurring", label: "Recurring", icon: Repeat },
   { href: "/invoices", label: "Invoices", icon: FileText },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {

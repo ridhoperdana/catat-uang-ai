@@ -7,10 +7,17 @@ import { Link } from "wouter";
 import { ArrowRight, PieChart } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useExpenses } from "@/hooks/use-expenses";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@shared/routes";
 import { format, subDays, startOfMonth, eachDayOfInterval } from "date-fns";
 
 function ChartSection() {
   const { data: expenses } = useExpenses();
+  const { data: settings } = useQuery<any>({
+    queryKey: [api.settings.get.path],
+  });
+
+  const baseCurrency = settings?.baseCurrency || "USD";
 
   // Simple data processing for chart
   const today = new Date();
@@ -61,7 +68,7 @@ function ChartSection() {
               axisLine={false} 
               tickLine={false} 
               tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
-              tickFormatter={(val) => `$${val}`}
+              tickFormatter={(val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: baseCurrency, maximumFractionDigits: 0 }).format(val)}
             />
             <Tooltip 
               contentStyle={{ 
@@ -69,7 +76,7 @@ function ChartSection() {
                 border: 'none', 
                 boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
               }}
-              formatter={(val: number) => [`$${val.toFixed(2)}`, 'Spent']}
+              formatter={(val: number) => [new Intl.NumberFormat('en-US', { style: 'currency', currency: baseCurrency }).format(val), 'Spent']}
             />
             <Area 
               type="monotone" 

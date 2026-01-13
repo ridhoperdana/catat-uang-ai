@@ -12,10 +12,21 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 
-// Enhance schema for form validation
+const CURRENCIES = [
+  { code: "USD", symbol: "$" },
+  { code: "EUR", symbol: "€" },
+  { code: "GBP", symbol: "£" },
+  { code: "JPY", symbol: "¥" },
+  { code: "IDR", symbol: "Rp" },
+  { code: "AUD", symbol: "A$" },
+  { code: "CAD", symbol: "C$" },
+  { code: "SGD", symbol: "S$" },
+];
+
 const formSchema = insertExpenseSchema.extend({
   amount: z.coerce.number().min(1, "Amount must be greater than 0"),
   date: z.coerce.date(),
+  currency: z.string().default("USD"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -31,6 +42,7 @@ export function ExpenseForm() {
       type: "expense",
       date: new Date(),
       isRecurring: false,
+      currency: "USD",
     }
   });
 
@@ -46,6 +58,9 @@ export function ExpenseForm() {
       }
     });
   };
+
+  const selectedCurrency = form.watch("currency");
+  const currencySymbol = CURRENCIES.find(c => c.code === selectedCurrency)?.symbol || "$";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -78,21 +93,38 @@ export function ExpenseForm() {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="amount">Amount (cents)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                <Input 
-                  id="amount" 
-                  type="number" 
-                  className="pl-7 rounded-xl"
-                  placeholder="0.00"
-                  {...form.register("amount")}
-                />
-              </div>
-              {form.formState.errors.amount && (
-                <p className="text-destructive text-xs">{form.formState.errors.amount.message}</p>
-              )}
+              <Label htmlFor="currency">Currency</Label>
+              <Select 
+                defaultValue="USD" 
+                onValueChange={(val) => form.setValue("currency", val)}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="USD" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCIES.map(c => (
+                    <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="amount">Amount (cents)</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-muted-foreground">{currencySymbol}</span>
+              <Input 
+                id="amount" 
+                type="number" 
+                className="pl-9 rounded-xl"
+                placeholder="0.00"
+                {...form.register("amount")}
+              />
+            </div>
+            {form.formState.errors.amount && (
+              <p className="text-destructive text-xs">{form.formState.errors.amount.message}</p>
+            )}
           </div>
 
           <div className="space-y-2">

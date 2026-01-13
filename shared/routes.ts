@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertExpenseSchema, insertRecurringExpenseSchema, insertInvoiceSchema, expenses, recurringExpenses, invoices } from './schema';
+import { insertExpenseSchema, insertRecurringExpenseSchema, insertInvoiceSchema, expenses, recurringExpenses, invoices, settings, insertSettingSchema } from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -110,14 +110,31 @@ export const api = {
       },
     },
     process: {
-      method: 'POST' as const,
-      path: '/api/invoices/:id/process',
+      method: "POST" as const,
+      path: "/api/invoices/:id/process",
       responses: {
         200: z.object({
           success: z.boolean(),
           data: z.any(),
         }),
         404: errorSchemas.notFound,
+      },
+    },
+  },
+  settings: {
+    get: {
+      method: "GET" as const,
+      path: "/api/settings",
+      responses: {
+        200: z.custom<typeof settings.$inferSelect>(),
+      },
+    },
+    update: {
+      method: "PATCH" as const,
+      path: "/api/settings",
+      input: insertSettingSchema.partial(),
+      responses: {
+        200: z.custom<typeof settings.$inferSelect>(),
       },
     },
   },
