@@ -47,7 +47,11 @@ export function ExpenseForm() {
   });
 
   const onSubmit = (data: FormData) => {
-    createExpense.mutate(data as InsertExpense, {
+    const submissionData = {
+      ...data,
+      amount: Math.round(data.amount * 100),
+    };
+    createExpense.mutate(submissionData as InsertExpense, {
       onSuccess: () => {
         toast({ title: "Expense added", description: "Your transaction has been recorded." });
         setOpen(false);
@@ -111,12 +115,13 @@ export function ExpenseForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="amount">Amount (cents)</Label>
+            <Label htmlFor="amount">Amount</Label>
             <div className="flex items-center rounded-xl border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-all">
               <span className="pl-3 text-muted-foreground select-none">{currencySymbol}</span>
               <Input 
                 id="amount" 
                 type="number" 
+                step="0.01"
                 className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent h-10 px-2"
                 placeholder="0.00"
                 {...form.register("amount")}

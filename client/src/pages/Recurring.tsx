@@ -39,7 +39,11 @@ export default function Recurring() {
   });
 
   const onSubmit = (data: FormData) => {
-    createMutation.mutate(data, {
+    const submissionData = {
+      ...data,
+      amount: Math.round(data.amount * 100),
+    };
+    createMutation.mutate(submissionData, {
       onSuccess: () => {
         toast({ title: "Success", description: "Recurring expense added" });
         setOpen(false);
@@ -76,8 +80,8 @@ export default function Recurring() {
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Amount (cents)</Label>
-                    <Input {...form.register("amount")} type="number" className="rounded-xl" />
+                    <Label>Amount</Label>
+                    <Input {...form.register("amount")} type="number" step="0.01" className="rounded-xl" />
                   </div>
                   <div className="space-y-2">
                     <Label>Frequency</Label>
