@@ -55,8 +55,6 @@ export async function processSyncQueue(apiRequest: (method: string, url: string,
   
   if (userQueue.length === 0) return;
 
-  console.log(`Processing sync queue with ${userQueue.length} items...`);
-
   const failedItems: QueuedMutation[] = [];
   const processedIds = new Set<string>();
 
@@ -65,7 +63,6 @@ export async function processSyncQueue(apiRequest: (method: string, url: string,
       await apiRequest(item.method, item.url, item.data);
       processedIds.add(item.id);
     } catch (error) {
-      console.error(`Failed to sync item ${item.id}:`, error);
       failedItems.push(item);
     }
   }

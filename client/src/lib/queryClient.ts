@@ -10,6 +10,25 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+async function returnMockResponse(url: string, method: string, data: any, userId?: number) {
+  await addToSyncQueue({ method, url, data, userId: userId || 0 });
+  
+  const mockData = {
+    id: Math.floor(Math.random() * -1000000),
+    ...(data instanceof FormData ? {} : (data || {})),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    status: "pending",
+    message: "Queued for sync",
+    isOffline: true
+  };
+
+  return new Response(JSON.stringify(mockData), {
+    status: 202,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -18,35 +37,13 @@ export async function apiRequest(
   userId?: number,
 ): Promise<Response> {
   const isRead = method === 'GET';
-  console.log(`[apiRequest] ${method} ${url}`, { isRead, onLine: navigator.onLine });
-
-  const returnMockResponse = async () => {
-    console.log(`[apiRequest] Offline: Queuing mutation for ${url}`);
-    await addToSyncQueue({ method, url, data, userId: userId || 0 });
-    
-    const mockData = {
-      id: Math.floor(Math.random() * -1000000),
-      ...(data instanceof FormData ? {} : (data || {})),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      status: "pending",
-      message: "Queued for sync",
-      isOffline: true
-    };
-
-    return new Response(JSON.stringify(mockData), {
-      status: 202,
-      headers: { "Content-Type": "application/json" },
-    });
-  };
 
   if (!navigator.onLine && !isRead) {
-    return await returnMockResponse();
+    return await returnMockResponse(url, method, data, userId);
   }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
-    console.warn(`[apiRequest] Timeout reached for ${url}`);
     controller.abort();
   }, timeout);
 
@@ -60,17 +57,15 @@ export async function apiRequest(
     });
 
     clearTimeout(timeoutId);
-    console.log(`[apiRequest] Response received for ${url}: ${res.status}`);
     
     await throwIfResNotOk(res);
     return res;
   } catch (error: any) {
     clearTimeout(timeoutId);
-    console.error(`[apiRequest] Error for ${url}:`, error.name, error.message);
     
     // If it's a network error or timeout during a mutation, queue it
     if (!isRead && (error instanceof TypeError || error.name === 'AbortError' || !navigator.onLine)) {
-      return await returnMockResponse();
+      return await returnMockResponse(url, method, data, userId);
     }
     throw error;
   }

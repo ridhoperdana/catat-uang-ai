@@ -14,16 +14,15 @@ export function useExpenses(filters?: { startDate?: string; endDate?: string; ca
     queryFn: async () => {
       if (!user) return [];
       const url = new URL(api.expenses.list.path, window.location.origin);
-      if (filters?.startDate) url.searchParams.append("startDate", filters.startDate);
-      if (filters?.endDate) url.searchParams.append("endDate", filters.endDate);
-      if (filters?.category) url.searchParams.append("category", filters.category);
+      if (filters?.startDate) url.searchParams.set("startDate", filters.startDate);
+      if (filters?.endDate) url.searchParams.set("endDate", filters.endDate);
+      if (filters?.category) url.searchParams.set("category", filters.category);
       
       let serverExpenses: any[] = [];
       try {
         const res = await apiRequest("GET", url.pathname + url.search);
         serverExpenses = api.expenses.list.responses[200].parse(await res.json());
       } catch (error) {
-        console.warn("[useExpenses] Fetch failed, using cache if available:", error);
         const cached = queryClient.getQueryData(queryKey);
         if (Array.isArray(cached)) {
           serverExpenses = cached;
@@ -118,7 +117,6 @@ export function useExpenseStats() {
         const res = await apiRequest("GET", api.expenses.stats.path);
         return api.expenses.stats.responses[200].parse(await res.json());
       } catch (error) {
-        console.warn("[useExpenseStats] Fetch failed, using cache if available:", error);
         const cached = queryClient.getQueryData(queryKey);
         if (cached) return cached;
         throw error;

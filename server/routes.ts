@@ -2,14 +2,12 @@ import type { Express } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { getCurrencyMetadata } from "@shared/schema";
-import { z } from "zod";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import multer from "multer";
 import fs from "fs";
-import path from "path";
 import OpenAI from "openai";
-import axios from "axios";
+import { convertExpenseAmount } from "./utils";
+import { z } from "zod";
 
 // Configure upload storage
 const upload = multer({ 
@@ -20,19 +18,6 @@ const upload = multer({
 // Ensure uploads directory exists
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
-}
-
-async function getExchangeRate(from: string, to: string): Promise<number> {
-  if (from === to) return 1;
-  try {
-    const response = await axios.get(`https://open.er-api.com/v6/latest/${from}`);
-    const rate = response.data.rates[to];
-    if (!rate) throw new Error(`Rate not found for ${to}`);
-    return rate;
-  } catch (error) {
-    console.error("Exchange rate error:", error);
-    throw new Error("Failed to fetch exchange rate");
-  }
 }
 
 export async function registerRoutes(
@@ -62,16 +47,13 @@ export async function registerRoutes(
     res.json(settings);
   });
 
-  app.patch(api.settings.update.path, async (req, res) => {
+  app.patch(api.settings.update.path, async (req, res, next) => {
     try {
       const input = api.settings.update.input!.parse(req.body);
       const updated = await storage.updateSettings(req.user!.id, input);
       res.json(updated);
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-      throw err;
+      next(err);
     }
   });
 
@@ -87,7 +69,7 @@ export async function registerRoutes(
     res.json(expenses);
   });
 
-  app.post(api.expenses.create.path, async (req, res) => {
+  app.post(api.expenses.create.path, async (req, res, next) => {
     try {
       const bodySchema = api.expenses.create.input.extend({
         date: z.coerce.date(),
@@ -97,22 +79,11 @@ export async function registerRoutes(
       const input = bodySchema.parse(req.body);
       
       const sessionSettings = await storage.getSettings(req.user!.id);
-      const baseCurrency = sessionSettings.baseCurrency;
-      const baseMeta = getCurrencyMetadata(baseCurrency);
-      const inputMeta = getCurrencyMetadata(input.currency);
-      
-      const inputScale = Math.pow(10, inputMeta.decimals);
-      const baseScale = Math.pow(10, baseMeta.decimals);
-
-      let convertedAmount = input.amount;
-      let rate = "1.0";
-      
-      if (input.currency !== baseCurrency) {
-        const numericRate = await getExchangeRate(input.currency, baseCurrency);
-        // convertedAmount (base units) = (original units / inputScale) * rate * baseScale
-        convertedAmount = Math.round((input.amount / inputScale) * numericRate * baseScale);
-        rate = numericRate.toString();
-      }
+      const { convertedAmount, rate } = await convertExpenseAmount(
+        input.amount,
+        input.currency,
+        sessionSettings.baseCurrency
+      );
 
       const expense = await storage.createExpense({
         ...input,
@@ -123,17 +94,11 @@ export async function registerRoutes(
       });
       res.status(201).json(expense);
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
-        });
-      }
-      throw err;
+      next(err);
     }
   });
 
-  app.put(api.expenses.update.path, async (req, res) => {
+  app.put(api.expenses.update.path, async (req, res, next) => {
     try {
       const id = parseInt(req.params.id);
       const existing = await storage.getExpense(id);
@@ -156,21 +121,11 @@ export async function registerRoutes(
         const amount = input.amount !== undefined ? input.amount : (existing.originalAmount || existing.amount);
         
         const sessionSettings = await storage.getSettings(req.user!.id);
-        const baseCurrency = sessionSettings.baseCurrency;
-        const baseMeta = getCurrencyMetadata(baseCurrency);
-        const inputMeta = getCurrencyMetadata(currency);
-        
-        const inputScale = Math.pow(10, inputMeta.decimals);
-        const baseScale = Math.pow(10, baseMeta.decimals);
-
-        let convertedAmount = amount;
-        let rate = "1.0";
-        
-        if (currency !== baseCurrency) {
-          const numericRate = await getExchangeRate(currency, baseCurrency);
-          convertedAmount = Math.round((amount / inputScale) * numericRate * baseScale);
-          rate = numericRate.toString();
-        }
+        const { convertedAmount, rate } = await convertExpenseAmount(
+          amount,
+          currency,
+          sessionSettings.baseCurrency
+        );
 
         updateData = {
           ...updateData,
@@ -184,13 +139,7 @@ export async function registerRoutes(
       const updated = await storage.updateExpense(id, updateData);
       res.json(updated);
     } catch (err) {
-       if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
-        });
-      }
-      throw err;
+      next(err);
     }
   });
 
@@ -215,7 +164,7 @@ export async function registerRoutes(
     res.json(items);
   });
 
-  app.post(api.recurring.create.path, async (req, res) => {
+  app.post(api.recurring.create.path, async (req, res, next) => {
      try {
       const input = api.recurring.create.input.parse(req.body);
       const item = await storage.createRecurringExpense({
@@ -224,13 +173,7 @@ export async function registerRoutes(
       });
       res.status(201).json(item);
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
-        });
-      }
-      throw err;
+      next(err);
     }
   });
 
@@ -259,7 +202,7 @@ export async function registerRoutes(
     res.json(invoices);
   });
 
-  app.post(api.invoices.process.path, async (req, res) => {
+  app.post(api.invoices.process.path, async (req, res, next) => {
     const id = parseInt(req.params.id);
     const invoice = await storage.getInvoice(id);
     if (!invoice || invoice.userId !== req.user!.id) return res.status(404).json({ message: "Invoice not found" });
@@ -302,7 +245,7 @@ export async function registerRoutes(
       const result = JSON.parse(response.choices[0].message.content || "{}");
       
       // Update invoice with data
-      const updated = await storage.updateInvoice(id, {
+      await storage.updateInvoice(id, {
         status: "processed",
         processedData: result
       });
@@ -322,9 +265,8 @@ export async function registerRoutes(
 
       res.json({ success: true, data: result });
     } catch (error) {
-      console.error("Invoice processing error:", error);
       await storage.updateInvoice(id, { status: "failed" });
-      res.status(500).json({ message: "Failed to process invoice" });
+      next(error);
     }
   });
 

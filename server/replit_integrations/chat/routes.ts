@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import OpenAI from "openai";
 import { chatStorage } from "./storage";
 
@@ -10,18 +10,17 @@ const openrouter = new OpenAI({
 
 export function registerChatRoutes(app: Express): void {
   // Get all conversations
-  app.get("/api/conversations", async (req: Request, res: Response) => {
+  app.get("/api/conversations", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const conversations = await chatStorage.getAllConversations();
       res.json(conversations);
     } catch (error) {
-      console.error("Error fetching conversations:", error);
-      res.status(500).json({ error: "Failed to fetch conversations" });
+      next(error);
     }
   });
 
   // Get single conversation with messages
-  app.get("/api/conversations/:id", async (req: Request, res: Response) => {
+  app.get("/api/conversations/:id", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = parseInt(req.params.id);
       const conversation = await chatStorage.getConversation(id);
@@ -31,39 +30,36 @@ export function registerChatRoutes(app: Express): void {
       const messages = await chatStorage.getMessagesByConversation(id);
       res.json({ ...conversation, messages });
     } catch (error) {
-      console.error("Error fetching conversation:", error);
-      res.status(500).json({ error: "Failed to fetch conversation" });
+      next(error);
     }
   });
 
   // Create new conversation
-  app.post("/api/conversations", async (req: Request, res: Response) => {
+  app.post("/api/conversations", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { title } = req.body;
       const conversation = await chatStorage.createConversation(title || "New Chat");
       res.status(201).json(conversation);
     } catch (error) {
-      console.error("Error creating conversation:", error);
-      res.status(500).json({ error: "Failed to create conversation" });
+      next(error);
     }
   });
 
   // Delete conversation
-  app.delete("/api/conversations/:id", async (req: Request, res: Response) => {
+  app.delete("/api/conversations/:id", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = parseInt(req.params.id);
       await chatStorage.deleteConversation(id);
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting conversation:", error);
-      res.status(500).json({ error: "Failed to delete conversation" });
+      next(error);
     }
   });
 
   // Send message and get AI response (streaming)
   // Note: The model should be configured based on your requirements. 
   // Use the OpenRouter API to find available models.
-  app.post("/api/conversations/:id/messages", async (req: Request, res: Response) => {
+  app.post("/api/conversations/:id/messages", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const conversationId = parseInt(req.params.id);
       const { content, model = "meta-llama/llama-3.3-70b-instruct" } = req.body;
@@ -107,15 +103,13 @@ export function registerChatRoutes(app: Express): void {
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
     } catch (error) {
-      console.error("Error sending message:", error);
       // Check if headers already sent (SSE streaming started)
       if (res.headersSent) {
         res.write(`data: ${JSON.stringify({ error: "Failed to send message" })}\n\n`);
         res.end();
       } else {
-        res.status(500).json({ error: "Failed to send message" });
+        next(error);
       }
     }
   });
 }
-
