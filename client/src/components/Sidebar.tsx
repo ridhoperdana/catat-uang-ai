@@ -1,6 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Receipt, Repeat, FileText, Settings } from "lucide-react";
+import { LayoutDashboard, Receipt, Repeat, FileText, Settings, LogOut } from "lucide-react";
 import { clsx } from "clsx";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -12,6 +14,7 @@ const navItems = [
 
 export function Sidebar() {
   const [location] = useLocation();
+  const { logoutMutation, user } = useAuth();
 
   return (
     <div className="hidden lg:flex flex-col w-64 border-r border-border min-h-screen bg-card sticky top-0 h-screen">
@@ -42,6 +45,28 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        <div className="mt-8 pt-8 border-t border-border/50">
+          <div className="flex items-center gap-3 px-4 py-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
+              {user?.username?.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex flex-col overflow-hidden">
+              <span className="font-semibold text-sm truncate">{user?.username}</span>
+              <span className="text-xs text-muted-foreground truncate">Free Plan</span>
+            </div>
+          </div>
+          
+          <Button 
+            variant="ghost" 
+            className="w-full justify-start gap-3 px-4 py-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all"
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+          >
+            <LogOut className="w-5 h-5" />
+            Sign Out
+          </Button>
+        </div>
       </div>
       
       <div className="mt-auto p-8 border-t border-border/50">
@@ -58,6 +83,7 @@ export function Sidebar() {
 
 export function MobileNav() {
   const [location] = useLocation();
+  const { logoutMutation } = useAuth();
   
   return (
     <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border pb-safe z-50 px-4 py-2 flex justify-between shadow-xl shadow-black/5">
@@ -73,6 +99,13 @@ export function MobileNav() {
           </Link>
         );
       })}
+      <button 
+        className="flex flex-col items-center gap-1 p-2 rounded-lg text-muted-foreground"
+        onClick={() => logoutMutation.mutate()}
+      >
+        <LogOut className="w-6 h-6" />
+        <span className="text-[10px] font-medium">Logout</span>
+      </button>
     </div>
   );
 }

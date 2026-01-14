@@ -1,11 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type InsertRecurringExpense } from "@shared/routes";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import { getSyncQueue, type QueuedMutation } from "@/lib/sync-manager";
 
 export function useRecurringExpenses() {
   const queryClient = useQueryClient();
-  const queryKey = [api.recurring.list.path];
+  const { user } = useAuth();
+  const queryKey = [api.recurring.list.path, user?.id];
 
   return useQuery({
     queryKey,
@@ -22,7 +24,7 @@ export function useRecurringExpenses() {
         }
       }
 
-      const queue = await getSyncQueue();
+      const queue = await getSyncQueue(user?.id);
       const pendingRecurring = queue
         .filter(item => item.method === 'POST' && item.url === api.recurring.create.path)
         .map(item => ({
@@ -35,11 +37,13 @@ export function useRecurringExpenses() {
 
       return [...pendingRecurring, ...serverRecurring.filter(s => !pendingRecurring.some(p => p.id === s.id))];
     },
+    enabled: !!user,
   });
 }
 
 export function useCreateRecurringExpense() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   return useMutation({
     mutationFn: async (data: InsertRecurringExpense) => {
       const payload = {
@@ -48,14 +52,14 @@ export function useCreateRecurringExpense() {
         nextDueDate: new Date(data.nextDueDate).toISOString(),
       };
 
-      const res = await apiRequest(api.recurring.create.method, api.recurring.create.path, payload);
+      const res = await apiRequest(api.recurring.create.method, api.recurring.create.path, payload, 3000, user?.id);
       return api.recurring.create.responses[201].parse(await res.json());
     },
     onMutate: async (newRecurring) => {
       await queryClient.cancelQueries({ queryKey: [api.recurring.list.path] });
-      const previousRecurring = queryClient.getQueryData([api.recurring.list.path]);
+      const previousRecurring = queryClient.getQueryData([api.recurring.list.path, user?.id]);
       
-      queryClient.setQueryData([api.recurring.list.path], (old: any[] = []) => [
+      queryClient.setQueryData([api.recurring.list.path, user?.id], (old: any[] = []) => [
         {
           ...newRecurring,
           id: Math.floor(Math.random() * -1000000),
@@ -69,7 +73,7 @@ export function useCreateRecurringExpense() {
       return { previousRecurring };
     },
     onError: (err, newRecurring, context) => {
-      queryClient.setQueryData([api.recurring.list.path], context?.previousRecurring);
+      queryClient.setQueryData([api.recurring.list.path, user?.id], context?.previousRecurring);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [api.recurring.list.path] });
@@ -79,10 +83,11 @@ export function useCreateRecurringExpense() {
 
 export function useDeleteRecurringExpense() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.recurring.delete.path, { id });
-      await apiRequest(api.recurring.delete.method, url);
+      await apiRequest(api.recurring.delete.method, url, undefined, 3000, user?.id);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.recurring.list.path] }),
   });

@@ -22,8 +22,15 @@ export function getCurrencyMetadata(code: string) {
   return CURRENCIES.find(c => c.code === code) || CURRENCIES[0];
 }
 
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").unique().notNull(),
+  password: text("password").notNull(),
+});
+
 export const expenses = pgTable("expenses", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
   amount: bigint("amount", { mode: "number" }).notNull(), // Converted amount in base currency units (x100)
   originalAmount: bigint("original_amount", { mode: "number" }), // Amount in original currency units (x100)
   currency: text("currency").notNull().default("USD"),
@@ -38,6 +45,7 @@ export const expenses = pgTable("expenses", {
 
 export const recurringExpenses = pgTable("recurring_expenses", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
   amount: bigint("amount", { mode: "number" }).notNull(), // Stored in units (x100)
   currency: text("currency").notNull().default("USD"),
   description: text("description").notNull(),
@@ -49,12 +57,14 @@ export const recurringExpenses = pgTable("recurring_expenses", {
 
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").unique().notNull().references(() => users.id),
   baseCurrency: text("base_currency").notNull().default("USD"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const invoices = pgTable("invoices", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
   fileUrl: text("file_url").notNull(),
   processedData: jsonb("processed_data"), // Stores AI extracted data
   createdAt: timestamp("created_at").defaultNow(),
@@ -62,12 +72,16 @@ export const invoices = pgTable("invoices", {
 });
 
 // Schemas
-export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });
-export const insertRecurringExpenseSchema = createInsertSchema(recurringExpenses).omit({ id: true });
-export const insertSettingSchema = createInsertSchema(settings).omit({ id: true, updatedAt: true });
-export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true });
+export const insertUserSchema = createInsertSchema(users);
+export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, userId: true });
+export const insertRecurringExpenseSchema = createInsertSchema(recurringExpenses).omit({ id: true, userId: true });
+export const insertSettingSchema = createInsertSchema(settings).omit({ id: true, userId: true, updatedAt: true });
+export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, userId: true, createdAt: true });
 
 // Types
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 

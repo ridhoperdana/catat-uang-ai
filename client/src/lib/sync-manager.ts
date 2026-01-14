@@ -4,6 +4,7 @@ const SYNC_QUEUE_KEY = 'sync-queue';
 
 export interface QueuedMutation {
   id: string;
+  userId: number;
   method: string;
   url: string;
   data: any;
@@ -31,34 +32,53 @@ export async function addToSyncQueue(mutation: Omit<QueuedMutation, 'id' | 'time
   return newMutation;
 }
 
-export async function getSyncQueue() {
-  return (await get<QueuedMutation[]>(SYNC_QUEUE_KEY)) || [];
+export async function getSyncQueue(userId?: number) {
+  const queue = (await get<QueuedMutation[]>(SYNC_QUEUE_KEY)) || [];
+  if (userId !== undefined) {
+    return queue.filter(item => item.userId === userId);
+  }
+  return queue;
 }
 
-export async function clearSyncQueue() {
-  await del(SYNC_QUEUE_KEY);
+export async function clearSyncQueue(userId?: number) {
+  if (userId !== undefined) {
+    const queue = (await get<QueuedMutation[]>(SYNC_QUEUE_KEY)) || [];
+    await set(SYNC_QUEUE_KEY, queue.filter(item => item.userId !== userId));
+  } else {
+    await del(SYNC_QUEUE_KEY);
+  }
 }
 
-export async function processSyncQueue(apiRequest: (method: string, url: string, data?: any) => Promise<Response>) {
-  const queue = await getSyncQueue();
-  if (queue.length === 0) return;
+export async function processSyncQueue(apiRequest: (method: string, url: string, data?: any) => Promise<Response>, userId?: number) {
+  const allQueue = (await get<QueuedMutation[]>(SYNC_QUEUE_KEY)) || [];
+  const userQueue = userId !== undefined ? allQueue.filter(item => item.userId === userId) : allQueue;
+  
+  if (userQueue.length === 0) return;
 
-  console.log(`Processing sync queue with ${queue.length} items...`);
+  console.log(`Processing sync queue with ${userQueue.length} items...`);
 
   const failedItems: QueuedMutation[] = [];
+  const processedIds = new Set<string>();
 
-  for (const item of queue) {
+  for (const item of userQueue) {
     try {
       await apiRequest(item.method, item.url, item.data);
+      processedIds.add(item.id);
     } catch (error) {
       console.error(`Failed to sync item ${item.id}:`, error);
       failedItems.push(item);
     }
   }
 
-  if (failedItems.length > 0) {
-    await set(SYNC_QUEUE_KEY, failedItems);
+  // Update original queue: remove processed ones, but keep failed ones and ones from other users
+  const updatedQueue = [
+    ...failedItems,
+    ...allQueue.filter(item => !processedIds.has(item.id) && !failedItems.some(f => f.id === item.id))
+  ];
+
+  if (updatedQueue.length > 0) {
+    await set(SYNC_QUEUE_KEY, updatedQueue);
   } else {
-    await clearSyncQueue();
+    await del(SYNC_QUEUE_KEY);
   }
 }

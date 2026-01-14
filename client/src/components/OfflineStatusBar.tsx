@@ -4,24 +4,26 @@ import { processSyncQueue, getSyncQueue } from "@/lib/sync-manager";
 import { AlertCircle, CheckCircle2, CloudOff, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 
 export function OfflineStatusBar() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [queueLength, setQueueLength] = useState(0);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   useEffect(() => {
     const handleOnline = async () => {
       setIsOnline(true);
       setIsSyncing(true);
       try {
-        await processSyncQueue(apiRequest);
+        await processSyncQueue(apiRequest, user?.id);
         // Refresh all data after sync completes
         await queryClient.invalidateQueries();
       } finally {
         setIsSyncing(false);
-        const queue = await getSyncQueue();
+        const queue = await getSyncQueue(user?.id);
         setQueueLength(queue.length);
       }
     };
@@ -31,7 +33,7 @@ export function OfflineStatusBar() {
     };
 
     const checkQueue = async () => {
-      const queue = await getSyncQueue();
+      const queue = await getSyncQueue(user?.id);
       setQueueLength(queue.length);
     };
 

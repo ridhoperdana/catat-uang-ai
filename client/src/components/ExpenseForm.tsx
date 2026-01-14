@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useSettings } from "@/hooks/use-settings";
 import { api } from "@shared/routes";
 import { getCurrencyMetadata, CURRENCIES } from "@shared/schema";
 import { z } from "zod";
@@ -30,9 +30,7 @@ export function ExpenseForm() {
   const { toast } = useToast();
   const createExpense = useCreateExpense();
   
-  const { data: settings } = useQuery<any>({
-    queryKey: [api.settings.get.path],
-  });
+  const { settings } = useSettings();
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),

@@ -11,7 +11,7 @@ import { insertRecurringExpenseSchema, getCurrencyMetadata, CURRENCIES } from "@
 import { z } from "zod";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useSettings } from "@/hooks/use-settings";
 import { api } from "@shared/routes";
 import { formatAmount } from "@/lib/utils";
 import { Plus, CalendarClock, Trash2, Loader2 } from "lucide-react";
@@ -33,9 +33,7 @@ export default function Recurring() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   
-  const { data: settings } = useQuery<any>({
-    queryKey: [api.settings.get.path],
-  });
+  const { settings } = useSettings();
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),

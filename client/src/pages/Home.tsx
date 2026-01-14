@@ -7,15 +7,13 @@ import { Link } from "wouter";
 import { ArrowRight, PieChart } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useExpenses } from "@/hooks/use-expenses";
-import { useQuery } from "@tanstack/react-query";
+import { useSettings } from "@/hooks/use-settings";
 import { api } from "@shared/routes";
 import { format, subDays, startOfMonth, eachDayOfInterval } from "date-fns";
 
 function ChartSection() {
   const { data: expenses } = useExpenses();
-  const { data: settings } = useQuery<any>({
-    queryKey: [api.settings.get.path],
-  });
+  const { settings } = useSettings();
 
   const baseCurrency = settings?.baseCurrency || "USD";
 

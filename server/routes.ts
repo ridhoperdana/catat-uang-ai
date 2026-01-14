@@ -42,16 +42,30 @@ export async function registerRoutes(
   // Register Chat Routes (Integration)
   registerChatRoutes(app);
 
+  // Auth Middleware
+  app.use("/api", (req, res, next) => {
+    // Skip auth for login/register/logout/user
+    const publicPaths = ["/login", "/register", "/logout", "/user"];
+    if (publicPaths.some(path => req.path === path)) {
+      return next();
+    }
+    
+    if (req.isAuthenticated()) {
+      return next();
+    }
+    res.status(401).send("Unauthorized");
+  });
+
   // --- Settings ---
   app.get(api.settings.get.path, async (req, res) => {
-    const settings = await storage.getSettings();
+    const settings = await storage.getSettings(req.user!.id);
     res.json(settings);
   });
 
   app.patch(api.settings.update.path, async (req, res) => {
     try {
       const input = api.settings.update.input!.parse(req.body);
-      const updated = await storage.updateSettings(input);
+      const updated = await storage.updateSettings(req.user!.id, input);
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -65,6 +79,7 @@ export async function registerRoutes(
   app.get(api.expenses.list.path, async (req, res) => {
     const { startDate, endDate, category } = req.query;
     const expenses = await storage.getExpenses(
+      req.user!.id,
       startDate as string, 
       endDate as string, 
       category as string
@@ -81,7 +96,7 @@ export async function registerRoutes(
       });
       const input = bodySchema.parse(req.body);
       
-      const sessionSettings = await storage.getSettings();
+      const sessionSettings = await storage.getSettings(req.user!.id);
       const baseCurrency = sessionSettings.baseCurrency;
       const baseMeta = getCurrencyMetadata(baseCurrency);
       const inputMeta = getCurrencyMetadata(input.currency);
@@ -101,6 +116,7 @@ export async function registerRoutes(
 
       const expense = await storage.createExpense({
         ...input,
+        userId: req.user!.id,
         amount: convertedAmount,
         originalAmount: input.amount,
         exchangeRate: rate,
@@ -121,7 +137,9 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       const existing = await storage.getExpense(id);
-      if (!existing) return res.status(404).json({ message: "Expense not found" });
+      if (!existing || existing.userId !== req.user!.id) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
 
       const bodySchema = api.expenses.update.input.extend({
         date: z.coerce.date().optional(),
@@ -137,7 +155,7 @@ export async function registerRoutes(
         const currency = input.currency || existing.currency || "USD";
         const amount = input.amount !== undefined ? input.amount : (existing.originalAmount || existing.amount);
         
-        const sessionSettings = await storage.getSettings();
+        const sessionSettings = await storage.getSettings(req.user!.id);
         const baseCurrency = sessionSettings.baseCurrency;
         const baseMeta = getCurrencyMetadata(baseCurrency);
         const inputMeta = getCurrencyMetadata(currency);
@@ -178,25 +196,32 @@ export async function registerRoutes(
 
   app.delete(api.expenses.delete.path, async (req, res) => {
     const id = parseInt(req.params.id);
+    const existing = await storage.getExpense(id);
+    if (!existing || existing.userId !== req.user!.id) {
+      return res.status(404).json({ message: "Expense not found" });
+    }
     await storage.deleteExpense(id);
     res.status(204).send();
   });
 
   app.get(api.expenses.stats.path, async (req, res) => {
-    const stats = await storage.getStats();
+    const stats = await storage.getStats(req.user!.id);
     res.json(stats);
   });
 
   // --- Recurring Expenses ---
   app.get(api.recurring.list.path, async (req, res) => {
-    const items = await storage.getRecurringExpenses();
+    const items = await storage.getRecurringExpenses(req.user!.id);
     res.json(items);
   });
 
   app.post(api.recurring.create.path, async (req, res) => {
      try {
       const input = api.recurring.create.input.parse(req.body);
-      const item = await storage.createRecurringExpense(input);
+      const item = await storage.createRecurringExpense({
+        ...input,
+        userId: req.user!.id
+      });
       res.status(201).json(item);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -222,6 +247,7 @@ export async function registerRoutes(
     // In a real app, upload to S3/Object Storage. Here we just return a local path mock or save basic info
     // We'll treat the local path as the "url" for now
     const invoice = await storage.createInvoice({
+      userId: req.user!.id,
       fileUrl: req.file.path,
       status: "pending"
     });
@@ -229,14 +255,14 @@ export async function registerRoutes(
   });
 
   app.get(api.invoices.list.path, async (req, res) => {
-    const invoices = await storage.getInvoices();
+    const invoices = await storage.getInvoices(req.user!.id);
     res.json(invoices);
   });
 
   app.post(api.invoices.process.path, async (req, res) => {
     const id = parseInt(req.params.id);
     const invoice = await storage.getInvoice(id);
-    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+    if (!invoice || invoice.userId !== req.user!.id) return res.status(404).json({ message: "Invoice not found" });
 
     try {
       // Prioritize user key if they set it in Secrets, else use Replit Integration
@@ -284,6 +310,7 @@ export async function registerRoutes(
       // Auto-create expense if valid
       if (result.amount && result.description) {
         await storage.createExpense({
+          userId: req.user!.id,
           amount: result.amount,
           description: result.description,
           date: new Date(result.date || Date.now()),
@@ -301,39 +328,5 @@ export async function registerRoutes(
     }
   });
 
-  // --- Seed Data ---
-  await seedDatabase();
-
   return httpServer;
-}
-
-async function seedDatabase() {
-  const existing = await storage.getExpenses();
-  if (existing.length === 0) {
-    const today = new Date();
-    await storage.createExpense({
-      amount: 5000,
-      description: "Groceries",
-      date: today,
-      category: "Food",
-      type: "expense",
-      isRecurring: false
-    });
-    await storage.createExpense({
-      amount: 120000,
-      description: "Salary",
-      date: today,
-      category: "Income",
-      type: "income",
-      isRecurring: false
-    });
-    await storage.createRecurringExpense({
-      amount: 1500, // $15.00
-      description: "Netflix",
-      category: "Entertainment",
-      frequency: "monthly",
-      nextDueDate: new Date(today.getFullYear(), today.getMonth() + 1, 1),
-      active: true
-    });
-  }
 }

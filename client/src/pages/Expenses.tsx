@@ -4,16 +4,20 @@ import { ExpenseForm } from "@/components/ExpenseForm";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 import { useExpenses } from "@/hooks/use-expenses";
+import { useSettings } from "@/hooks/use-settings";
 import { format } from "date-fns";
 
 export default function Expenses() {
   const { data: expenses } = useExpenses();
+  const { settings } = useSettings();
 
   const handleExport = () => {
     if (!expenses) return;
     
+    const baseCurrency = settings?.baseCurrency || "USD";
+    
     // Simple CSV export
-    const headers = ["Date", "Description", "Category", "Type", "Amount (USD)"];
+    const headers = ["Date", "Description", "Category", "Type", `Amount (${baseCurrency})`];
     const rows = expenses.map(e => [
       format(new Date(e.date), "yyyy-MM-dd"),
       `"${e.description}"`,

@@ -1,51 +1,72 @@
-import { expenses, recurringExpenses, invoices, type Expense, type InsertExpense, type RecurringExpense, type InsertRecurringExpense, type Invoice, type InsertInvoice, conversations, messages, settings, type Setting, type InsertSetting } from "@shared/schema";
+import { expenses, recurringExpenses, invoices, type Expense, type InsertExpense, type RecurringExpense, type InsertRecurringExpense, type Invoice, type InsertInvoice, conversations, messages, settings, type Setting, type InsertSetting, users, type User, type InsertUser } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 import { IChatStorage } from "./replit_integrations/chat/storage";
 
 export interface IStorage extends IChatStorage {
+  // Users
+  getUser(id: number): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+
   // Expenses
-  getExpenses(startDate?: string, endDate?: string, category?: string): Promise<Expense[]>;
+  getExpenses(userId: number, startDate?: string, endDate?: string, category?: string): Promise<Expense[]>;
   getExpense(id: number): Promise<Expense | undefined>;
-  createExpense(expense: InsertExpense): Promise<Expense>;
+  createExpense(expense: InsertExpense & { userId: number }): Promise<Expense>;
   updateExpense(id: number, expense: Partial<InsertExpense>): Promise<Expense | undefined>;
   deleteExpense(id: number): Promise<void>;
-  getStats(): Promise<{ totalIncome: number; totalExpense: number; balance: number; monthlyIncome: number }>;
+  getStats(userId: number): Promise<{ totalIncome: number; totalExpense: number; balance: number; monthlyIncome: number }>;
 
   // Recurring
-  getRecurringExpenses(): Promise<RecurringExpense[]>;
-  createRecurringExpense(expense: InsertRecurringExpense): Promise<RecurringExpense>;
+  getRecurringExpenses(userId: number): Promise<RecurringExpense[]>;
+  createRecurringExpense(expense: InsertRecurringExpense & { userId: number }): Promise<RecurringExpense>;
   deleteRecurringExpense(id: number): Promise<void>;
 
   // Invoices
-  createInvoice(invoice: InsertInvoice): Promise<Invoice>;
-  getInvoices(): Promise<Invoice[]>;
+  createInvoice(invoice: InsertInvoice & { userId: number }): Promise<Invoice>;
+  getInvoices(userId: number): Promise<Invoice[]>;
   updateInvoice(id: number, updates: Partial<Invoice>): Promise<Invoice | undefined>;
   getInvoice(id: number): Promise<Invoice | undefined>;
 
   // Settings
-  getSettings(): Promise<Setting>;
-  updateSettings(updates: Partial<InsertSetting>): Promise<Setting>;
+  getSettings(userId: number): Promise<Setting>;
+  updateSettings(userId: number, updates: Partial<InsertSetting>): Promise<Setting>;
 }
 
 export class DatabaseStorage implements IStorage {
   // Settings Implementation
-  async getSettings(): Promise<Setting> {
-    const [existing] = await db.select().from(settings);
+  async getSettings(userId: number): Promise<Setting> {
+    const [existing] = await db.select().from(settings).where(eq(settings.userId, userId));
     if (!existing) {
-      const [created] = await db.insert(settings).values({ baseCurrency: "USD" }).returning();
+      const [created] = await db.insert(settings).values({ userId, baseCurrency: "USD" }).returning();
       return created;
     }
     return existing;
   }
 
-  async updateSettings(updates: Partial<InsertSetting>): Promise<Setting> {
-    const existing = await this.getSettings();
+  async updateSettings(userId: number, updates: Partial<InsertSetting>): Promise<Setting> {
+    const existing = await this.getSettings(userId);
     const [updated] = await db.update(settings)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(settings.id, existing.id))
       .returning();
     return updated;
+  }
+
+  // User Implementation
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
   }
 
   // Chat Implementation (required by interface but implemented in replit_integrations)
@@ -73,8 +94,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expense Implementation
-  async getExpenses(startDate?: string, endDate?: string, category?: string): Promise<Expense[]> {
-    const conditions = [];
+  async getExpenses(userId: number, startDate?: string, endDate?: string, category?: string): Promise<Expense[]> {
+    const conditions = [eq(expenses.userId, userId)];
     if (startDate) conditions.push(gte(expenses.date, new Date(startDate)));
     if (endDate) conditions.push(lte(expenses.date, new Date(endDate)));
     if (category) conditions.push(eq(expenses.category, category));
@@ -90,7 +111,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async createExpense(insertExpense: InsertExpense): Promise<Expense> {
+  async createExpense(insertExpense: InsertExpense & { userId: number }): Promise<Expense> {
     const [expense] = await db.insert(expenses).values(insertExpense).returning();
     return expense;
   }
@@ -107,8 +128,8 @@ export class DatabaseStorage implements IStorage {
     await db.delete(expenses).where(eq(expenses.id, id));
   }
 
-  async getStats(): Promise<{ totalIncome: number; totalExpense: number; balance: number; monthlyIncome: number }> {
-    const allExpenses = await db.select().from(expenses);
+  async getStats(userId: number): Promise<{ totalIncome: number; totalExpense: number; balance: number; monthlyIncome: number }> {
+    const allExpenses = await db.select().from(expenses).where(eq(expenses.userId, userId));
     
     let totalIncome = 0;
     let totalExpense = 0;
@@ -131,11 +152,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Recurring
-  async getRecurringExpenses(): Promise<RecurringExpense[]> {
-    return await db.select().from(recurringExpenses).where(eq(recurringExpenses.active, true));
+  async getRecurringExpenses(userId: number): Promise<RecurringExpense[]> {
+    return await db.select().from(recurringExpenses).where(and(eq(recurringExpenses.userId, userId), eq(recurringExpenses.active, true)));
   }
 
-  async createRecurringExpense(insertRecurring: InsertRecurringExpense): Promise<RecurringExpense> {
+  async createRecurringExpense(insertRecurring: InsertRecurringExpense & { userId: number }): Promise<RecurringExpense> {
     const [recurring] = await db.insert(recurringExpenses).values(insertRecurring).returning();
     return recurring;
   }
@@ -145,13 +166,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Invoices
-  async createInvoice(insertInvoice: InsertInvoice): Promise<Invoice> {
+  async createInvoice(insertInvoice: InsertInvoice & { userId: number }): Promise<Invoice> {
     const [invoice] = await db.insert(invoices).values(insertInvoice).returning();
     return invoice;
   }
 
-  async getInvoices(): Promise<Invoice[]> {
-    return await db.select().from(invoices).orderBy(desc(invoices.createdAt));
+  async getInvoices(userId: number): Promise<Invoice[]> {
+    return await db.select().from(invoices).where(eq(invoices.userId, userId)).orderBy(desc(invoices.createdAt));
   }
 
   async updateInvoice(id: number, updates: Partial<Invoice>): Promise<Invoice | undefined> {

@@ -14,14 +14,15 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
-  timeout = 3000, // Reduced to 3 seconds for better perceived responsiveness
+  timeout = 3000,
+  userId?: number,
 ): Promise<Response> {
   const isRead = method === 'GET';
   console.log(`[apiRequest] ${method} ${url}`, { isRead, onLine: navigator.onLine });
 
   const returnMockResponse = async () => {
     console.log(`[apiRequest] Offline: Queuing mutation for ${url}`);
-    await addToSyncQueue({ method, url, data });
+    await addToSyncQueue({ method, url, data, userId: userId || 0 });
     
     const mockData = {
       id: Math.floor(Math.random() * -1000000),

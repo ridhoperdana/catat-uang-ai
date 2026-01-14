@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clsx } from "clsx";
-import { useQuery } from "@tanstack/react-query";
+import { useSettings } from "@/hooks/use-settings";
 import { api } from "@shared/routes";
 import { formatAmount } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,9 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 export function ExpenseList({ limit }: { limit?: number }) {
   const { data: expenses, isLoading: expensesLoading } = useExpenses();
   const deleteExpense = useDeleteExpense();
-  const { data: settings, isLoading: settingsLoading } = useQuery<any>({
-    queryKey: [api.settings.get.path],
-  });
+  const { settings, isLoading: settingsLoading } = useSettings();
 
   if (expensesLoading || settingsLoading) {
     return (

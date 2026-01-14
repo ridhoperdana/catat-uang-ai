@@ -2,7 +2,7 @@ import { useExpenseStats } from "@/hooks/use-expenses";
 import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clsx } from "clsx";
-import { useQuery } from "@tanstack/react-query";
+import { useSettings } from "@/hooks/use-settings";
 import { api } from "@shared/routes";
 import { formatAmount } from "@/lib/utils";
 
@@ -44,10 +44,8 @@ function StatCard({
 }
 
 export function StatsCards() {
-  const { data: stats, isLoading: statsLoading } = useExpenseStats();
-  const { data: settings, isLoading: settingsLoading } = useQuery<any>({
-    queryKey: [api.settings.get.path],
-  });
+  const { data: stats, isLoading: statsLoading } = useExpenseStats() as any;
+  const { settings, isLoading: settingsLoading } = useSettings();
 
   if (statsLoading || settingsLoading) {
     return (

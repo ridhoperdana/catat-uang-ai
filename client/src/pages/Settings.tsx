@@ -1,9 +1,7 @@
 import { Sidebar, MobileNav } from "@/components/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { api } from "@shared/routes";
-import { queryClient } from "@/lib/queryClient";
+import { useSettings } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
 
 const CURRENCIES = [
@@ -19,36 +17,25 @@ const CURRENCIES = [
 
 export default function Settings() {
   const { toast } = useToast();
-  
-  const { data: settings, isLoading } = useQuery<any>({
-    queryKey: [api.settings.get.path],
-  });
+  const { settings, isLoading, updateSettings, isUpdating } = useSettings();
 
-  const mutation = useMutation({
-    mutationFn: async (baseCurrency: string) => {
-      const res = await fetch(api.settings.update.path, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseCurrency }),
-      });
-      if (!res.ok) throw new Error("Failed to update settings");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.settings.get.path] });
-      toast({
-        title: "Settings updated",
-        description: "Your base currency has been changed.",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Update failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+  const handleCurrencyChange = (value: string) => {
+    updateSettings({ baseCurrency: value }, {
+      onSuccess: () => {
+        toast({
+          title: "Settings updated",
+          description: "Your base currency has been changed.",
+        });
+      },
+      onError: (error: any) => {
+        toast({
+          title: "Update failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
+    });
+  };
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -74,8 +61,8 @@ export default function Settings() {
               <div className="flex items-center gap-4">
                 <Select
                   value={settings?.baseCurrency || "USD"}
-                  onValueChange={(value) => mutation.mutate(value)}
-                  disabled={isLoading || mutation.isPending}
+                  onValueChange={handleCurrencyChange}
+                  disabled={isLoading || isUpdating}
                 >
                   <SelectTrigger className="w-[280px]">
                     <SelectValue placeholder="Select currency" />
@@ -88,7 +75,7 @@ export default function Settings() {
                     ))}
                   </SelectContent>
                 </Select>
-                {mutation.isPending && (
+                {isUpdating && (
                   <span className="text-sm text-muted-foreground animate-pulse">Saving...</span>
                 )}
               </div>
